@@ -1,0 +1,19 @@
+{
+  "name": "discord-shop-bot",
+  "version": "1.0.0",
+  "description": "Bot de vendas com PIX para Discord",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy-commands": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.1",
+    "qrcode": "^1.5.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
