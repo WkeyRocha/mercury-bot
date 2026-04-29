@@ -4,6 +4,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   PermissionFlagsBits,
 } = require('discord.js');
 const db = require('../database/supabase');
@@ -12,9 +13,13 @@ const { formatarValor } = require('../utils/pix');
 const data = new SlashCommandBuilder()
   .setName('setup')
   .setDescription('📌 [ADMIN] Posta a mensagem de loja fixa no canal atual')
+  .addStringOption(opt =>
+    opt
+      .setName('banner')
+      .setDescription('URL da imagem do banner (opcional)')
+  )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-// Agrupa produtos por categoria detectada no nome
 function detectarCategoria(nome) {
   const n = nome.toLowerCase();
   if (n.includes('skill'))          return '✨ SKILLS';
@@ -26,6 +31,20 @@ function detectarCategoria(nome) {
   return '🛍️ OUTROS';
 }
 
+function detectarEmoji(nome) {
+  const n = nome.toLowerCase();
+  if (n.includes('skill'))      return '✨';
+  if (n.includes('crate'))      return '🎁';
+  if (n.includes('key'))        return '🗝️';
+  if (n.includes('shard'))      return '💎';
+  if (n.includes('sword'))      return '⚔️';
+  if (n.includes('relic'))      return '⚡';
+  if (n.includes('grail'))      return '🏆';
+  if (n.includes('sigil'))      return '🔮';
+  if (n.includes('upgrade'))    return '🔧';
+  return '🛍️';
+}
+
 async function execute(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
     return interaction.reply({ content: '🚫 Apenas administradores.', ephemeral: true });
@@ -34,7 +53,9 @@ async function execute(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const produtos = await db.getProducts();
+    const produtos  = await db.getProducts();
+    const bannerUrl = interaction.options.getString('banner') || null;
+
     if (!produtos.length) {
       return interaction.editReply({ content: '❌ Nenhum produto encontrado no banco.' });
     }
@@ -47,35 +68,49 @@ async function execute(interaction) {
       categorias[cat].push(p);
     }
 
-    // Monta o embed principal
+    // Embed principal
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
       .setTitle('🛒 Bem-vindo à Loja!')
       .setDescription(
-        '> Use `/comprar` para navegar pelo catálogo e realizar sua compra.\n' +
+        '> Selecione um produto no menu abaixo para realizar sua compra.\n' +
         '> O pagamento é feito via **PIX** — rápido e seguro!\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━'
       )
       .setTimestamp()
       .setFooter({ text: 'Pagamento 100% via PIX • Entrega imediata' });
 
-    // Adiciona um field por categoria
+    if (bannerUrl) embed.setImage(bannerUrl);
+
     for (const [cat, itens] of Object.entries(categorias)) {
       const linhas = itens
-        .map(p => `${p.name} — **${formatarValor(p.price)}**`)
+        .map(p => `▸ ${p.name} — **${formatarValor(p.price)}**`)
         .join('\n');
       embed.addFields({ name: cat, value: linhas, inline: false });
     }
 
-    // Botão de abrir catálogo
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('abrir_catalogo')
-        .setLabel('🛒 Ver Catálogo e Comprar')
-        .setStyle(ButtonStyle.Success),
-    );
+    // Menu de seleção — divide em chunks de 25 (limite do Discord)
+    const chunks = [];
+    for (let i = 0; i < produtos.length; i += 25) {
+      chunks.push(produtos.slice(i, i + 25));
+    }
 
-    await interaction.channel.send({ embeds: [embed], components: [row] });
+    const rows = chunks.map((chunk, idx) => {
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`selecionar_produto_${idx}`)
+        .setPlaceholder(chunks.length > 1 ? `🛒 Selecione um produto (página ${idx + 1})` : '🛒 Selecione um produto...')
+        .addOptions(
+          chunk.map(p => ({
+            label: p.name.substring(0, 100),
+            description: formatarValor(p.price),
+            value: p.id,
+            emoji: detectarEmoji(p.name),
+          }))
+        );
+      return new ActionRowBuilder().addComponents(menu);
+    });
+
+    await interaction.channel.send({ embeds: [embed], components: rows });
     await interaction.editReply({ content: '✅ Mensagem de loja postada!' });
 
   } catch (err) {

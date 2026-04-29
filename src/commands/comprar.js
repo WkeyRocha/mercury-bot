@@ -149,31 +149,27 @@ async function handleButton(interaction) {
       // ── Cria o canal privado de compra ────────────────
       const categoryId = process.env.COMPRA_CATEGORY_ID;
 
-      const channelOptions = {
-        name: `compra-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-        type: ChannelType.GuildText,
-        topic: `Pedido de ${user.tag} — ${produto.name} — TXID: ${txid}`,
-        permissionOverwrites: [
-          {
-            // Nega acesso a todos (@everyone)
-            id: guild.roles.everyone,
-            deny: [PermissionFlagsBits.ViewChannel],
-          },
-          {
-            // Permite acesso ao comprador
-            id: user.id,
-            allow: [
-              PermissionFlagsBits.ViewChannel,
-              PermissionFlagsBits.ReadMessageHistory,
-              PermissionFlagsBits.SendMessages,
-            ],
-          },
-        ],
-      };
+      const permissionOverwrites = [
+        {
+          // Nega acesso a todos
+          id: guild.roles.everyone,
+          deny: [PermissionFlagsBits.ViewChannel],
+        },
+        {
+          // Permite apenas o comprador
+          id: user.id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.SendMessages,
+          ],
+          deny: [PermissionFlagsBits.ManageChannels],
+        },
+      ];
 
-      // Adiciona permissão ao cargo admin (se configurado)
+      // Permite o cargo admin ver e gerenciar
       if (process.env.ADMIN_ROLE_ID) {
-        channelOptions.permissionOverwrites.push({
+        permissionOverwrites.push({
           id: process.env.ADMIN_ROLE_ID,
           allow: [
             PermissionFlagsBits.ViewChannel,
@@ -183,6 +179,13 @@ async function handleButton(interaction) {
           ],
         });
       }
+
+      const channelOptions = {
+        name: `compra-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        type: ChannelType.GuildText,
+        topic: `Pedido de ${user.tag} — ${produto.name} — TXID: ${txid}`,
+        permissionOverwrites,
+      };
 
       if (categoryId) channelOptions.parent = categoryId;
 
@@ -235,15 +238,20 @@ async function handleButton(interaction) {
     return;
   }
 
-  // ── Fechar canal ──────────────────────────────────────
-  if (id.startsWith('fechar_canal_')) {
-    const canal = interaction.channel;
-    if (!canal) return;
+// ── Fechar canal ──────────────────────────────────────
+if (id.startsWith('fechar_canal_')) {
+  const canal = interaction.channel;
+  if (!canal) return;
 
-    await interaction.reply({ content: '🗑️ Fechando canal em 5 segundos...', ephemeral: true });
-    setTimeout(() => canal.delete('Canal de compra encerrado').catch(console.error), 5000);
-    return;
-  }
+  // Só o admin ou o dono do canal pode fechar
+  const isAdmin = process.env.ADMIN_ROLE_ID
+    ? interaction.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+    : interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+  await interaction.reply({ content: '🗑️ Fechando canal em 5 segundos...', ephemeral: true });
+  setTimeout(() => canal.delete('Canal de compra encerrado').catch(console.error), 5000);
+  return;
+}
 }
 
 module.exports = { data, execute, handleButton };

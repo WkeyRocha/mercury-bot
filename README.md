@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🤖 Discord Shop Bot
 
 Bot de vendas com pagamento via PIX para Discord. Slash commands, catálogo com paginação, gerenciamento de pedidos e dashboard — tudo integrado ao Supabase.
@@ -156,3 +157,6 @@ VALUES ('Nome do Produto', 'Descrição detalhada', 39.90, 'https://url-da-image
 ```
 
 Ou crie uma interface admin no Supabase usando a aba **Table Editor**.
+=======
+# mercury-bot
+>>>>>>> 2bd74b26d8caf058933d834a9432db378a67b56e
