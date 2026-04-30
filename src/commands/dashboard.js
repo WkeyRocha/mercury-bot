@@ -16,8 +16,7 @@ function isAdmin(member) {
 
 const data = new SlashCommandBuilder()
   .setName('dashboard')
-  .setDescription('📊 [ADMIN] Resumo de vendas e pedidos')
-  .setDefaultMemberPermissions(0);
+  .setDescription('📊 [ADMIN] Resumo de vendas e pedidos');
 
 async function execute(interaction) {
   if (!isAdmin(interaction.member)) {
