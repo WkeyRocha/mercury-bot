@@ -1,5 +1,6 @@
 const {
   SlashCommandBuilder,
+  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -9,7 +10,7 @@ const {
 } = require('discord.js');
 const QRCode     = require('qrcode');
 const db         = require('../database/supabase');
-const { gerarPayloadPix, gerarTxid } = require('../utils/pix');
+const { gerarPayloadPix, gerarTxid, formatarValor } = require('../utils/pix');
 const { embedProduto, embedPix, embedErro, embedSucesso } = require('../utils/embeds');
 
 // ── Botões de navegação ───────────────────────────────────
@@ -123,6 +124,25 @@ async function handleButton(interaction) {
 
     try {
       const produto = await db.getProductById(produtoId);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle(produto.name)
+        .setDescription(produto.description)
+        .addFields({ name: 'Preco', value: `**${formatarValor(produto.price)}**`, inline: true })
+        .setFooter({ text: 'Confirme para prosseguir com o pagamento via PIX' })
+        .setTimestamp();
+
+      if (produto.image_url) embed.setImage(produto.image_url);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`confirmar_compra:${produto.id}:`).setLabel('Confirmar Compra').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`cupom_compra:${produto.id}`).setLabel('Colocar Cupom').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('cancelar_compra').setLabel('Cancelar').setStyle(ButtonStyle.Secondary),
+      );
+
+      await interaction.editReply({ embeds: [embed], components: [row] });
+      return;
 
       // Gera txid único
       const txid = gerarTxid(user.username);

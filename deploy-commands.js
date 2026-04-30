@@ -3,9 +3,10 @@ const { REST, Routes } = require('discord.js');
 
 const dashboard = require('./src/commands/dashboard');
 const setup     = require('./src/commands/setup');
+const comprar   = require('./src/commands/comprar');
 const produtos  = require('./src/commands/produtos');
 
-const commands = [dashboard.data, setup.data, produtos.data].map(cmd => cmd.toJSON());
+const commands = [dashboard.data, setup.data, comprar.data, produtos.data].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 

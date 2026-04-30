@@ -20,27 +20,37 @@ async function enviarLog(client, { embeds, components } = {}) {
   }
 }
 
-function msgCarrinhoCriado(user, produto, txid, pedidoId) {
+function msgCarrinhoCriado(user, produto, txid, pedidoId, pedido = null) {
+  const fields = [
+    { name: 'Comprador', value: `<@${user.id}> (${user.tag})`, inline: true },
+    { name: 'Produto', value: produto.name, inline: true },
+    { name: 'Valor', value: formatarValor(pedido?.amount ?? produto.price), inline: true },
+  ];
+
+  if (pedido?.coupon_code) {
+    fields.push(
+      { name: 'Cupom', value: `\`${pedido.coupon_code}\``, inline: true },
+      { name: 'Desconto', value: formatarValor(pedido.discount_amount || 0), inline: true },
+    );
+  }
+
+  fields.push({ name: 'TXID', value: `\`${txid}\``, inline: false });
+
   const embed = new EmbedBuilder()
     .setColor(CORES.aviso)
-    .setTitle('🛒 Novo Carrinho — Aguardando Pagamento')
-    .addFields(
-      { name: '👤 Comprador', value: `<@${user.id}> (${user.tag})`, inline: true },
-      { name: '📦 Produto',   value: produto.name,                   inline: true },
-      { name: '💰 Valor',     value: formatarValor(produto.price),   inline: true },
-      { name: '🆔 TXID',      value: `\`${txid}\``,                  inline: false },
-    )
+    .setTitle('Novo Carrinho - Aguardando Pagamento')
+    .addFields(fields)
     .setTimestamp()
-    .setFooter({ text: 'Use os botões para confirmar ou negar o pagamento' });
+    .setFooter({ text: 'Use os botoes para confirmar ou negar o pagamento' });
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`pedido_confirmar_${pedidoId}`)
-      .setLabel('✅ Confirmar Pagamento')
+      .setLabel('Confirmar Pagamento')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`pedido_negar_${pedidoId}`)
-      .setLabel('❌ Negar Pagamento')
+      .setLabel('Negar Pagamento')
       .setStyle(ButtonStyle.Danger),
   );
 
@@ -48,17 +58,27 @@ function msgCarrinhoCriado(user, produto, txid, pedidoId) {
 }
 
 function msgVendaConfirmada(pedido, adminTag, deliveryNumber) {
+  const fields = [
+    { name: 'Comprador', value: `<@${pedido.user_id}> (${pedido.username})`, inline: true },
+    { name: 'Produto', value: pedido.product_name, inline: true },
+    { name: 'Valor', value: formatarValor(pedido.amount), inline: true },
+    { name: 'Entrega', value: `#${deliveryNumber}`, inline: true },
+    { name: 'Admin', value: adminTag, inline: true },
+  ];
+
+  if (pedido.coupon_code) {
+    fields.push(
+      { name: 'Cupom', value: `\`${pedido.coupon_code}\``, inline: true },
+      { name: 'Desconto', value: formatarValor(pedido.discount_amount || 0), inline: true },
+    );
+  }
+
+  fields.push({ name: 'TXID', value: `\`${pedido.pix_txid}\``, inline: false });
+
   const embed = new EmbedBuilder()
     .setColor(CORES.sucesso)
-    .setTitle('✅ Venda Confirmada')
-    .addFields(
-      { name: '👤 Comprador', value: `<@${pedido.user_id}> (${pedido.username})`, inline: true },
-      { name: '📦 Produto',   value: pedido.product_name,                          inline: true },
-      { name: '💰 Valor',     value: formatarValor(pedido.amount),                 inline: true },
-      { name: '📬 Entrega',   value: `#${deliveryNumber}`,                         inline: true },
-      { name: '👮 Admin',     value: adminTag,                                      inline: true },
-      { name: '🆔 TXID',      value: `\`${pedido.pix_txid}\``,                     inline: false },
-    )
+    .setTitle('Venda Confirmada')
+    .addFields(fields)
     .setTimestamp()
     .setFooter({ text: 'Pagamento confirmado' });
 
@@ -66,15 +86,21 @@ function msgVendaConfirmada(pedido, adminTag, deliveryNumber) {
 }
 
 function msgVendaNegada(pedido, adminTag) {
+  const fields = [
+    { name: 'Comprador', value: `<@${pedido.user_id}> (${pedido.username})`, inline: true },
+    { name: 'Produto', value: pedido.product_name, inline: true },
+    { name: 'Valor', value: formatarValor(pedido.amount), inline: true },
+    { name: 'Admin', value: adminTag, inline: true },
+  ];
+
+  if (pedido.coupon_code) {
+    fields.push({ name: 'Cupom', value: `\`${pedido.coupon_code}\``, inline: true });
+  }
+
   const embed = new EmbedBuilder()
     .setColor(CORES.erro)
-    .setTitle('❌ Pagamento Negado')
-    .addFields(
-      { name: '👤 Comprador', value: `<@${pedido.user_id}> (${pedido.username})`, inline: true },
-      { name: '📦 Produto',   value: pedido.product_name,                          inline: true },
-      { name: '💰 Valor',     value: formatarValor(pedido.amount),                 inline: true },
-      { name: '👮 Admin',     value: adminTag,                                      inline: true },
-    )
+    .setTitle('Pagamento Negado')
+    .addFields(fields)
     .setTimestamp()
     .setFooter({ text: 'Pagamento negado' });
 
@@ -84,12 +110,12 @@ function msgVendaNegada(pedido, adminTag) {
 function msgProdutoCriado(produto, adminTag) {
   const embed = new EmbedBuilder()
     .setColor(CORES.info)
-    .setTitle('➕ Produto Criado')
+    .setTitle('Produto Criado')
     .addFields(
-      { name: '📦 Nome',      value: produto.name,                 inline: true },
-      { name: '💰 Preço',     value: formatarValor(produto.price), inline: true },
-      { name: '👮 Admin',     value: adminTag,                      inline: true },
-      { name: '📝 Descrição', value: produto.description,          inline: false },
+      { name: 'Nome', value: produto.name, inline: true },
+      { name: 'Preco', value: formatarValor(produto.price), inline: true },
+      { name: 'Admin', value: adminTag, inline: true },
+      { name: 'Descricao', value: produto.description, inline: false },
     )
     .setTimestamp();
 
@@ -99,11 +125,11 @@ function msgProdutoCriado(produto, adminTag) {
 function msgProdutoEditado(produto, adminTag) {
   const embed = new EmbedBuilder()
     .setColor(CORES.primaria)
-    .setTitle('✏️ Produto Editado')
+    .setTitle('Produto Editado')
     .addFields(
-      { name: '📦 Nome',  value: produto.name,                 inline: true },
-      { name: '💰 Preço', value: formatarValor(produto.price), inline: true },
-      { name: '👮 Admin', value: adminTag,                      inline: true },
+      { name: 'Nome', value: produto.name, inline: true },
+      { name: 'Preco', value: formatarValor(produto.price), inline: true },
+      { name: 'Admin', value: adminTag, inline: true },
     )
     .setTimestamp();
 

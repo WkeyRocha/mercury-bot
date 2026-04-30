@@ -14,6 +14,16 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Tabela de cupons
+CREATE TABLE IF NOT EXISTS coupons (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  code VARCHAR(32) NOT NULL UNIQUE,
+  discount_type VARCHAR(10) NOT NULL CHECK (discount_type IN ('percent', 'fixo')),
+  discount_value NUMERIC(10, 2) NOT NULL,
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Tabela de pedidos
 CREATE TABLE IF NOT EXISTS orders (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -22,6 +32,9 @@ CREATE TABLE IF NOT EXISTS orders (
   product_id UUID REFERENCES products(id),
   product_name VARCHAR(100) NOT NULL,
   amount NUMERIC(10, 2) NOT NULL,
+  original_amount NUMERIC(10, 2),
+  discount_amount NUMERIC(10, 2) DEFAULT 0,
+  coupon_code VARCHAR(32),
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'denied')),
   channel_id VARCHAR(50),
   pix_txid VARCHAR(50),
@@ -35,6 +48,13 @@ CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
+CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
+CREATE INDEX IF NOT EXISTS idx_coupons_active ON coupons(active);
+
+-- Migração para bancos ja existentes
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_amount NUMERIC(10, 2);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10, 2) DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(32);
 
 -- Dados de exemplo para produtos (opcional — remova se quiser adicionar os seus)
 INSERT INTO products (name, description, price, image_url) VALUES

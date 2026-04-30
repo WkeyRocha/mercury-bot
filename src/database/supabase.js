@@ -42,10 +42,66 @@ async function toggleProduto(id, active) {
   if (error) throw new Error(error.message);
 }
 
+function normalizeCouponCode(code) {
+  return String(code || '').trim().toUpperCase();
+}
+
+async function getCoupons() {
+  const { data, error } = await supabase.from('coupons').select('*').order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function getCouponById(id) {
+  const { data, error } = await supabase.from('coupons').select('*').eq('id', id).single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function getActiveCouponByCode(code) {
+  const normalized = normalizeCouponCode(code);
+  const { data, error } = await supabase.from('coupons').select('*').eq('code', normalized).eq('active', true).single();
+  if (error) return null;
+  return data;
+}
+
+async function createCoupon({ codigo, tipo, valor, active = true }) {
+  const { data, error } = await supabase.from('coupons')
+    .insert({ code: normalizeCouponCode(codigo), discount_type: tipo, discount_value: valor, active })
+    .select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function updateCoupon(id, { codigo, tipo, valor, active = true }) {
+  const { data, error } = await supabase.from('coupons')
+    .update({ code: normalizeCouponCode(codigo), discount_type: tipo, discount_value: valor, active })
+    .eq('id', id).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function toggleCoupon(id, active) {
+  const { error } = await supabase.from('coupons').update({ active }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 // ── PEDIDOS ───────────────────────────────────────────────
-async function createOrder({ userId, username, productId, productName, amount, channelId, pixTxid }) {
+async function createOrder({ userId, username, productId, productName, amount, channelId, pixTxid, couponCode = null, originalAmount = null, discountAmount = 0 }) {
   const { data, error } = await supabase.from('orders')
-    .insert({ user_id: userId, username, product_id: productId, product_name: productName, amount, channel_id: channelId, pix_txid: pixTxid, status: 'pending' })
+    .insert({
+      user_id: userId,
+      username,
+      product_id: productId,
+      product_name: productName,
+      amount,
+      original_amount: originalAmount || amount,
+      discount_amount: discountAmount,
+      coupon_code: couponCode,
+      channel_id: channelId,
+      pix_txid: pixTxid,
+      status: 'pending',
+    })
     .select().single();
   if (error) throw new Error(error.message);
   return data;
@@ -123,6 +179,7 @@ async function getDashboardStats() {
 
 module.exports = {
   supabase, getProducts, getAllProducts, getProductById, createProduct, updateProduct, toggleProduto,
+  normalizeCouponCode, getCoupons, getCouponById, getActiveCouponByCode, createCoupon, updateCoupon, toggleCoupon,
   createOrder, getOrders, getOrderById, updateOrderStatus, updateDeliveryChannel, getNextDeliveryNumber,
   getDashboardStats,
 };
