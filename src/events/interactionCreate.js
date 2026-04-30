@@ -57,7 +57,8 @@ module.exports = {
     if (interaction.isButton()) {
       const id = interaction.customId;
       try {
-        if (id.startsWith('pedido_confirmar_') || id.startsWith('pedido_negar_')) {
+        if (id.startsWith('pedido_confirmar_') || id.startsWith('pedido_negar_') ||
+            id.startsWith('entrega_confirmar_') || id.startsWith('entrega_excluir_')) {
           return pedidos.handleButton(interaction);
         }
         if (id === 'dashboard_atualizar')                            return dashboard.handleButton(interaction);
