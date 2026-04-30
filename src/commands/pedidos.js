@@ -5,23 +5,22 @@ const {
   ButtonStyle,
   StringSelectMenuBuilder,
   PermissionFlagsBits,
+  EmbedBuilder,
+  ChannelType,
 } = require('discord.js');
 const db = require('../database/supabase');
 const { embedPedidoAdmin, embedErro, embedSucesso, CORES } = require('../utils/embeds');
 const { formatarValor } = require('../utils/pix');
-const { EmbedBuilder } = require('discord.js');
+const { enviarLog, logVendaConfirmada, logVendaNegada } = require('../utils/logs');
 
-// ── Verifica se usuário é admin ───────────────────────────
 function isAdmin(member) {
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (process.env.ADMIN_ROLE_ID && member.roles.cache.has(process.env.ADMIN_ROLE_ID)) return true;
   return false;
 }
 
-// ── Botões de ação de pedido ──────────────────────────────
 function botoesAcao(pedidoId, status) {
   const row = new ActionRowBuilder();
-
   if (status === 'pending') {
     row.addComponents(
       new ButtonBuilder()
@@ -42,14 +41,11 @@ function botoesAcao(pedidoId, status) {
         .setDisabled(true),
     );
   }
-
   return row;
 }
 
-// ── Embed lista de pedidos ────────────────────────────────
 function embedListaPedidos(pedidos, filtro) {
   const filtroLabel = { all: 'Todos', pending: 'Pendentes', confirmed: 'Confirmados', denied: 'Negados' };
-
   if (!pedidos.length) {
     return new EmbedBuilder()
       .setColor(CORES.neutro)
@@ -57,10 +53,9 @@ function embedListaPedidos(pedidos, filtro) {
       .setDescription('_Nenhum pedido encontrado._')
       .setTimestamp();
   }
-
   const linhas = pedidos.slice(0, 10).map((p, i) => {
-    const emoji  = { pending: '⏳', confirmed: '✅', denied: '❌' }[p.status] || '❓';
-    const data   = `<t:${Math.floor(new Date(p.created_at).getTime() / 1000)}:d>`;
+    const emoji = { pending: '⏳', confirmed: '✅', denied: '❌' }[p.status] || '❓';
+    const data  = `<t:${Math.floor(new Date(p.created_at).getTime() / 1000)}:d>`;
     return `${i + 1}. ${emoji} **${p.product_name}** — ${formatarValor(p.amount)}\n   👤 ${p.username} · ${data}`;
   }).join('\n\n');
 
@@ -68,34 +63,28 @@ function embedListaPedidos(pedidos, filtro) {
     .setColor(CORES.primaria)
     .setTitle(`📋 Pedidos — ${filtroLabel[filtro]}`)
     .setDescription(linhas)
-    .setFooter({ text: `${pedidos.length} pedido(s) encontrado(s) • Use o menu abaixo para filtrar` })
+    .setFooter({ text: `${pedidos.length} pedido(s) encontrado(s)` })
     .setTimestamp();
 }
 
-// ── Comando /pedidos ──────────────────────────────────────
 const data = new SlashCommandBuilder()
   .setName('pedidos')
   .setDescription('📋 [ADMIN] Gerenciar pedidos da loja')
-  .setDefaultMemberPermissions(0)
   .addStringOption(opt =>
-    opt
-      .setName('filtro')
+    opt.setName('filtro')
       .setDescription('Filtrar pedidos por status')
       .addChoices(
-        { name: '📋 Todos', value: 'all' },
-        { name: '⏳ Pendentes', value: 'pending' },
+        { name: '📋 Todos',       value: 'all' },
+        { name: '⏳ Pendentes',   value: 'pending' },
         { name: '✅ Confirmados', value: 'confirmed' },
-        { name: '❌ Negados', value: 'denied' },
+        { name: '❌ Negados',     value: 'denied' },
       )
-  );
+  )
+  .setDefaultMemberPermissions(0);
 
 async function execute(interaction) {
-  // Verifica permissão
   if (!isAdmin(interaction.member)) {
-    return interaction.reply({
-      embeds: [embedErro('🚫 Apenas administradores podem usar este comando.')],
-      ephemeral: true,
-    });
+    return interaction.reply({ embeds: [embedErro('🚫 Apenas administradores.')], ephemeral: true });
   }
 
   await interaction.deferReply({ ephemeral: true });
@@ -104,7 +93,6 @@ async function execute(interaction) {
     const filtro  = interaction.options.getString('filtro') || 'pending';
     const pedidos = await db.getOrders(filtro === 'all' ? null : filtro);
 
-    // Menu de seleção de filtro
     const menuFiltro = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('pedidos_filtro')
@@ -122,7 +110,6 @@ async function execute(interaction) {
       components: [menuFiltro],
     });
 
-    // Envia um embed por pedido (máx 5 pendentes de uma vez)
     const pedidosParaMostrar = pedidos.filter(p => p.status === 'pending').slice(0, 5);
     for (const pedido of pedidosParaMostrar) {
       await interaction.followUp({
@@ -131,28 +118,25 @@ async function execute(interaction) {
         ephemeral: true,
       });
     }
-
   } catch (err) {
     console.error('[/pedidos]', err);
-    await interaction.editReply({ embeds: [embedErro(`Erro ao carregar pedidos: ${err.message}`)] });
+    await interaction.editReply({ embeds: [embedErro(`Erro: ${err.message}`)] });
   }
 }
 
-// ── Handlers de botão e select menu ──────────────────────
 async function handleButton(interaction) {
   const id = interaction.customId;
 
   if (!isAdmin(interaction.member)) {
-    return interaction.reply({
-      embeds: [embedErro('🚫 Apenas administradores podem usar estes botões.')],
-      ephemeral: true,
-    });
+    return interaction.reply({ embeds: [embedErro('🚫 Apenas administradores.')], ephemeral: true });
   }
 
   if (id.startsWith('pedido_confirmar_') || id.startsWith('pedido_negar_')) {
     await interaction.deferUpdate();
 
-    const pedidoId = id.includes('confirmar') ? id.replace('pedido_confirmar_', '') : id.replace('pedido_negar_', '');
+    const pedidoId = id.includes('confirmar')
+      ? id.replace('pedido_confirmar_', '')
+      : id.replace('pedido_negar_', '');
     const confirmar = id.startsWith('pedido_confirmar_');
 
     try {
@@ -162,54 +146,128 @@ async function handleButton(interaction) {
         interaction.user.tag
       );
 
-      // Atualiza o embed do pedido
       await interaction.editReply({
         embeds: [embedPedidoAdmin(pedido)],
         components: [botoesAcao(pedido.id, pedido.status)],
       });
 
-      // Notifica o comprador no canal privado (se ainda existir)
+      // ── Notifica no canal privado de compra ─────────────
       if (pedido.channel_id) {
-        try {
-          const canal = await interaction.guild.channels.fetch(pedido.channel_id).catch(() => null);
-          if (canal) {
-            const msg = confirmar
-              ? `✅ <@${pedido.user_id}> Seu pagamento foi **confirmado** por ${interaction.user.tag}! Obrigado pela compra! 🎉`
-              : `❌ <@${pedido.user_id}> Seu pagamento foi **negado** por ${interaction.user.tag}. Entre em contato com um administrador se tiver dúvidas.`;
+        const canalCompra = await interaction.guild.channels.fetch(pedido.channel_id).catch(() => null);
 
-            await canal.send({
-              content: msg,
+        if (confirmar) {
+          // ── Cria canal de entrega ───────────────────────
+          const deliveryNumber = await db.getNextDeliveryNumber();
+
+          const permissionOverwrites = [
+            { id: interaction.guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+            {
+              id: pedido.user_id,
+              allow: [
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.ReadMessageHistory,
+                PermissionFlagsBits.SendMessages,
+              ],
+            },
+          ];
+
+          if (process.env.ADMIN_ROLE_ID) {
+            permissionOverwrites.push({
+              id: process.env.ADMIN_ROLE_ID,
+              allow: [
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.ReadMessageHistory,
+                PermissionFlagsBits.SendMessages,
+                PermissionFlagsBits.ManageChannels,
+              ],
+            });
+          }
+
+          const canalOptions = {
+            name: `entrega-${deliveryNumber}`,
+            type: ChannelType.GuildText,
+            topic: `Entrega #${deliveryNumber} — ${pedido.product_name} — ${pedido.username}`,
+            permissionOverwrites,
+          };
+
+          if (process.env.ENTREGA_CATEGORY_ID) canalOptions.parent = process.env.ENTREGA_CATEGORY_ID;
+
+          const canalEntrega = await interaction.guild.channels.create(canalOptions);
+
+          // Salva o canal de entrega no pedido
+          await db.updateDeliveryChannel(pedido.id, canalEntrega.id, deliveryNumber);
+
+          // Log de venda confirmada
+          await enviarLog(interaction.client, logVendaConfirmada(pedido, interaction.user.tag, deliveryNumber));
+
+          // Mensagem no canal de entrega
+          await canalEntrega.send({
+            content: `<@${pedido.user_id}>`,
+            embeds: [
+              new EmbedBuilder()
+                .setColor(CORES.sucesso)
+                .setTitle(`📦 Entrega #${deliveryNumber}`)
+                .setDescription(
+                  `Olá <@${pedido.user_id}>! Seu pagamento foi confirmado! 🎉\n\n` +
+                  `**🛍️ Produto:** ${pedido.product_name}\n` +
+                  `**💰 Valor:** ${formatarValor(pedido.amount)}\n\n` +
+                  `> Um administrador irá entregar seu produto em breve.\n` +
+                  `> Qualquer dúvida, fale aqui neste canal.`
+                )
+                .addFields({ name: '🆔 TXID do Pagamento', value: `\`${pedido.pix_txid}\`` })
+                .setTimestamp()
+                .setFooter({ text: `Confirmado por ${interaction.user.tag}` }),
+            ],
+          });
+
+          // Mensagem no canal de compra avisando
+          if (canalCompra) {
+            await canalCompra.send({
               embeds: [
                 new EmbedBuilder()
-                  .setColor(confirmar ? CORES.sucesso : CORES.erro)
-                  .setTitle(confirmar ? '✅ Compra Confirmada!' : '❌ Compra Negada')
+                  .setColor(CORES.sucesso)
+                  .setTitle('✅ Pagamento Confirmado!')
                   .setDescription(
-                    confirmar
-                      ? `Seu pedido de **${pedido.product_name}** foi confirmado! Você receberá o produto em breve.`
-                      : `Seu pedido de **${pedido.product_name}** foi negado. Se o pagamento foi efetuado, entre em contato.`
+                    `<@${pedido.user_id}> Seu pagamento foi confirmado! 🎉\n\n` +
+                    `Acesse o canal ${canalEntrega} para acompanhar sua entrega.\n\n` +
+                    `*Este canal será fechado em 1 minuto.*`
                   )
                   .setTimestamp(),
               ],
             });
 
-            // Agenda fechamento do canal após 5 min (se confirmado)
-            if (confirmar) {
-              setTimeout(async () => {
-                try { await canal.delete('Compra confirmada — canal encerrado'); } catch {}
-              }, 5 * 60 * 1000);
-            }
+            // Fecha o canal de compra após 1 minuto
+            setTimeout(async () => {
+              await canalCompra.delete('Compra confirmada').catch(console.error);
+            }, 60 * 1000);
           }
-        } catch (e) {
-          console.error('[notif canal]', e);
+
+        } else {
+          // Log de venda negada
+          await enviarLog(interaction.client, logVendaNegada(pedido, interaction.user.tag));
+
+          // Pagamento negado — avisa no canal de compra
+          if (canalCompra) {
+            await canalCompra.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(CORES.erro)
+                  .setTitle('❌ Pagamento Negado')
+                  .setDescription(
+                    `<@${pedido.user_id}> Infelizmente seu pagamento foi **negado**.\n\n` +
+                    `Se acredita que isso é um erro, entre em contato com um administrador.`
+                  )
+                  .setTimestamp()
+                  .setFooter({ text: `Negado por ${interaction.user.tag}` }),
+              ],
+            });
+          }
         }
       }
 
     } catch (err) {
       console.error('[pedido_btn]', err);
-      await interaction.followUp({
-        embeds: [embedErro(`Erro ao atualizar pedido: ${err.message}`)],
-        ephemeral: true,
-      });
+      await interaction.followUp({ embeds: [embedErro(`Erro: ${err.message}`)], ephemeral: true });
     }
   }
 }
@@ -240,7 +298,6 @@ async function handleSelectMenu(interaction) {
       embeds: [embedListaPedidos(pedidos, filtro)],
       components: [menuFiltro],
     });
-
   } catch (err) {
     console.error('[pedidos_select]', err);
   }
