@@ -113,7 +113,12 @@ async function execute(interaction) {
     await interaction.editReply({ embeds: [embed], components });
   } catch (err) {
     console.error('[/produtos]', err);
-    await interaction.editReply({ content: `Erro: ${err.message}` });
+    if (err.message.includes("public.coupons") || err.message.includes("table 'coupons'") || err.message.includes('coupons')) {
+      return interaction.editReply({
+        content: 'A tabela de cupons ainda nao existe no Supabase. Execute o arquivo `instalar-cupons.sql` no SQL Editor do Supabase e tente `/produtos` novamente.',
+      });
+    }
+    return interaction.editReply({ content: `Erro: ${err.message}` });
   }
 }
 
@@ -221,7 +226,7 @@ async function handleCouponModal(interaction) {
   const valorStr = interaction.fields.getTextInputValue('valor').replace(',', '.').trim();
   const ativoStr = interaction.fields.getTextInputValue('ativo').trim().toLowerCase() || 'sim';
   const valor = parseFloat(valorStr);
-  const active = !['nao', 'não', 'n', 'false', '0', 'inativo'].includes(ativoStr);
+  const active = !['nao', 'n', 'false', '0', 'inativo'].includes(ativoStr);
 
   if (!/^[A-Z0-9_-]{3,32}$/.test(codigo)) {
     return interaction.reply({ content: 'Codigo invalido. Use 3 a 32 caracteres: letras, numeros, _ ou -.', ephemeral: true });
@@ -348,3 +353,4 @@ function buildCouponModal(tipo, cupom = null) {
 }
 
 module.exports = { data, execute, handleButton, handleSelectMenu, handleModal };
+
