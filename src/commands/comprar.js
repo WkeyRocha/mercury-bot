@@ -129,7 +129,10 @@ async function handleButton(interaction) {
         .setColor(0x5865F2)
         .setTitle(produto.name)
         .setDescription(produto.description)
-        .addFields({ name: 'Preco', value: `**${formatarValor(produto.price)}**`, inline: true })
+        .addFields(
+          { name: 'Preco', value: `**${formatarValor(produto.price)}**`, inline: true },
+          { name: 'Categoria', value: produto.category_name || 'Sem categoria', inline: true },
+        )
         .setFooter({ text: 'Confirme para prosseguir com o pagamento via PIX' })
         .setTimestamp();
 

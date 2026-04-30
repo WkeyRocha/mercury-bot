@@ -3,35 +3,115 @@ const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 // ── PRODUTOS ──────────────────────────────────────────────
+function withCategoryName(products, categories) {
+  const map = new Map((categories || []).map(c => [c.id, c]));
+  return (products || []).map(p => ({
+    ...p,
+    category_name: map.get(p.category_id)?.name || null,
+    category_active: map.get(p.category_id)?.active ?? null,
+    category_sort_order: map.get(p.category_id)?.sort_order ?? 9999,
+  }));
+}
+
 async function getProducts() {
-  const { data, error } = await supabase.from('products').select('*').eq('active', true).order('created_at', { ascending: true });
+  const [{ data: products, error }, categories] = await Promise.all([
+    supabase.from('products').select('*').eq('active', true).order('created_at', { ascending: true }),
+    getCategories().catch(() => []),
+  ]);
   if (error) throw new Error(error.message);
-  return data;
+  return withCategoryName(products, categories)
+    .filter(p => p.category_active !== false)
+    .sort((a, b) => {
+      const ordemA = a.category_sort_order ?? 9999;
+      const ordemB = b.category_sort_order ?? 9999;
+      if (ordemA !== ordemB) return ordemA - ordemB;
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
 }
 
 async function getAllProducts() {
-  const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: true });
+  const [{ data, error }, categories] = await Promise.all([
+    supabase.from('products').select('*').order('created_at', { ascending: true }),
+    getCategories().catch(() => []),
+  ]);
   if (error) throw new Error(error.message);
-  return data;
+  return withCategoryName(data, categories);
 }
 
 async function getProductById(id) {
-  const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
+  const [{ data, error }, categories] = await Promise.all([
+    supabase.from('products').select('*').eq('id', id).single(),
+    getCategories().catch(() => []),
+  ]);
+  if (error) throw new Error(error.message);
+  return withCategoryName([data], categories)[0];
+}
+
+async function getCategories(activeOnly = false) {
+  let query = supabase.from('categories').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
+  if (activeOnly) query = query.eq('active', true);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data;
 }
 
-async function createProduct({ nome, descricao, preco, imagem }) {
-  const { data, error } = await supabase.from('products')
-    .insert({ name: nome, description: descricao, price: preco, image_url: imagem, active: true })
+async function getCategoryById(id) {
+  const { data, error } = await supabase.from('categories').select('*').eq('id', id).single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function getCategoryByName(name) {
+  const normalized = String(name || '').trim();
+  if (!normalized) return null;
+  const { data, error } = await supabase.from('categories').select('*').ilike('name', normalized).limit(1);
+  if (error) throw new Error(error.message);
+  return data[0] || null;
+}
+
+async function createCategory({ nome, descricao = null, active = true, sortOrder = 0 }) {
+  const { data, error } = await supabase.from('categories')
+    .insert({ name: nome, description: descricao, active, sort_order: sortOrder })
     .select().single();
   if (error) throw new Error(error.message);
   return data;
 }
 
-async function updateProduct(id, { nome, descricao, preco, imagem }) {
+async function updateCategory(id, { nome, descricao = null, active = true, sortOrder = 0 }) {
+  const { data, error } = await supabase.from('categories')
+    .update({ name: nome, description: descricao, active, sort_order: sortOrder })
+    .eq('id', id).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function toggleCategory(id, active) {
+  const { error } = await supabase.from('categories').update({ active }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+async function resolveCategoryId(categoria) {
+  const name = String(categoria || '').trim();
+  if (!name) return null;
+  const existing = await getCategoryByName(name);
+  if (existing) return existing.id;
+  const created = await createCategory({ nome: name });
+  return created.id;
+}
+
+async function createProduct({ nome, descricao, preco, imagem, categoria }) {
+  const categoryId = await resolveCategoryId(categoria);
   const { data, error } = await supabase.from('products')
-    .update({ name: nome, description: descricao, price: preco, image_url: imagem })
+    .insert({ name: nome, description: descricao, price: preco, image_url: imagem, category_id: categoryId, active: true })
+    .select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function updateProduct(id, { nome, descricao, preco, imagem, categoria }) {
+  const categoryId = await resolveCategoryId(categoria);
+  const { data, error } = await supabase.from('products')
+    .update({ name: nome, description: descricao, price: preco, image_url: imagem, category_id: categoryId })
     .eq('id', id).select().single();
   if (error) throw new Error(error.message);
   return data;
@@ -247,6 +327,7 @@ async function getDashboardStats() {
 
 module.exports = {
   supabase, getProducts, getAllProducts, getProductById, createProduct, updateProduct, toggleProduto,
+  getCategories, getCategoryById, getCategoryByName, createCategory, updateCategory, toggleCategory,
   normalizeCouponCode, getCoupons, getCouponById, getActiveCouponByCode, createCoupon, updateCoupon, toggleCoupon,
   createOrder, getOrders, getOpenOrderByUser, getPendingOrders, getOrderById, updateOrderStatus, expireOrder, updateDeliveryChannel, markOrderDelivered, rateOrder, getNextDeliveryNumber,
   getDashboardStats,

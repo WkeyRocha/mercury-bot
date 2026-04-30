@@ -19,6 +19,7 @@ function embedProduto(produto, pagina, total) {
     .setImage(produto.image_url || null)
     .addFields(
       { name: 'Preco', value: `**${formatarValor(produto.price)}**`, inline: true },
+      { name: 'Categoria', value: produto.category_name || 'Sem categoria', inline: true },
       { name: 'ID', value: `\`${produto.id.split('-')[0]}\``, inline: true },
     )
     .setFooter({ text: `Produto ${pagina} de ${total} | Use o botao Comprar para adquirir` })

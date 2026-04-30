@@ -16,21 +16,26 @@ const { enviarLog, msgProdutoCriado, msgProdutoEditado } = require('../utils/log
 
 const data = new SlashCommandBuilder()
   .setName('produtos')
-  .setDescription('[ADMIN] Gerenciar produtos e cupons da loja')
+  .setDescription('[ADMIN] Gerenciar produtos, categorias e cupons da loja')
   .setDefaultMemberPermissions(0);
 
 async function execute(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const [produtos, cupons] = await Promise.all([
+    const [produtos, cupons, categorias] = await Promise.all([
       db.getAllProducts(),
       db.getCoupons(),
+      db.getCategories(),
     ]);
 
     const listaProdutos = produtos.length
-      ? produtos.map((p, i) => `${i + 1}. ${p.active ? 'Ativo' : 'Inativo'} **${p.name}** - ${formatarValor(p.price)}`).join('\n')
+      ? produtos.map((p, i) => `${i + 1}. ${p.active ? 'Ativo' : 'Inativo'} **${p.name}** - ${formatarValor(p.price)} - ${p.category_name || 'Sem categoria'}`).join('\n')
       : '_Nenhum produto cadastrado._';
+
+    const listaCategorias = categorias.length
+      ? categorias.map((c, i) => `${i + 1}. ${c.active ? 'Ativa' : 'Inativa'} **${c.name}** - ordem ${c.sort_order || 0}`).join('\n')
+      : '_Nenhuma categoria cadastrada._';
 
     const listaCupons = cupons.length
       ? cupons.map((c, i) => {
@@ -43,8 +48,9 @@ async function execute(interaction) {
       .setColor(CORES.primaria)
       .setTitle('Gerenciar Produtos')
       .setDescription(listaProdutos)
+      .addFields({ name: 'Categorias', value: listaCategorias, inline: false })
       .addFields({ name: 'Cupons', value: listaCupons, inline: false })
-      .setFooter({ text: `${produtos.length} produto(s) | ${cupons.length} cupom(ns)` })
+      .setFooter({ text: `${produtos.length} produto(s) | ${categorias.length} categoria(s) | ${cupons.length} cupom(ns)` })
       .setTimestamp();
 
     const components = [
@@ -57,6 +63,10 @@ async function execute(interaction) {
           .setCustomId('cupom_novo')
           .setLabel('Novo Cupom')
           .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId('categoria_nova')
+          .setLabel('Nova Categoria')
+          .setStyle(ButtonStyle.Secondary),
       ),
     ];
 
@@ -68,7 +78,7 @@ async function execute(interaction) {
             .setPlaceholder('Selecione um produto para editar...')
             .addOptions(produtos.slice(0, 25).map(p => ({
               label: p.name.substring(0, 100),
-              description: `${formatarValor(p.price)} - ${p.active ? 'Ativo' : 'Inativo'}`,
+              description: `${p.category_name || 'Sem categoria'} - ${formatarValor(p.price)} - ${p.active ? 'Ativo' : 'Inativo'}`.substring(0, 100),
               value: p.id,
             })))
         ),
@@ -85,7 +95,22 @@ async function execute(interaction) {
       );
     }
 
-    if (cupons.length) {
+    if (categorias.length) {
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('categoria_editar_sel')
+            .setPlaceholder('Selecione uma categoria para editar...')
+            .addOptions(categorias.slice(0, 25).map(c => ({
+              label: c.name.substring(0, 100),
+              description: `${c.active ? 'Ativa' : 'Inativa'} - ordem ${c.sort_order || 0}`,
+              value: c.id,
+            })))
+        ),
+      );
+    }
+
+    if (cupons.length && components.length < 5) {
       components.push(
         new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
@@ -94,16 +119,6 @@ async function execute(interaction) {
             .addOptions(cupons.slice(0, 25).map(c => ({
               label: c.code.substring(0, 100),
               description: `${c.discount_type === 'percent' ? `${Number(c.discount_value)}%` : formatarValor(c.discount_value)} - ${c.active ? 'Ativo' : 'Inativo'}`,
-              value: c.id,
-            })))
-        ),
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId('cupom_toggle_sel')
-            .setPlaceholder('Ativar / Desativar cupom...')
-            .addOptions(cupons.slice(0, 25).map(c => ({
-              label: c.code.substring(0, 100),
-              description: c.active ? 'Clique para DESATIVAR' : 'Clique para ATIVAR',
               value: c.id,
             })))
         ),
@@ -116,6 +131,11 @@ async function execute(interaction) {
     if (err.message.includes("public.coupons") || err.message.includes("table 'coupons'") || err.message.includes('coupons')) {
       return interaction.editReply({
         content: 'A tabela de cupons ainda nao existe no Supabase. Execute o arquivo `instalar-cupons.sql` no SQL Editor do Supabase e tente `/produtos` novamente.',
+      });
+    }
+    if (err.message.includes("public.categories") || err.message.includes("table 'categories'") || err.message.includes('categories')) {
+      return interaction.editReply({
+        content: 'A tabela de categorias ainda nao existe no Supabase. Execute o arquivo `instalar-categorias.sql` no SQL Editor do Supabase e tente `/produtos` novamente.',
       });
     }
     return interaction.editReply({ content: `Erro: ${err.message}` });
@@ -131,6 +151,10 @@ async function handleButton(interaction) {
 
   if (id === 'cupom_novo') {
     return interaction.showModal(buildCouponModal('novo'));
+  }
+
+  if (id === 'categoria_nova') {
+    return interaction.showModal(buildCategoryModal('novo'));
   }
 
   if (id.startsWith('produto_editar_')) {
@@ -172,6 +196,21 @@ async function handleSelectMenu(interaction) {
     const status = !cupom.active ? 'ativado' : 'desativado';
     return interaction.followUp({ content: `Cupom **${cupom.code}** foi ${status}!`, ephemeral: true });
   }
+
+  if (id === 'categoria_editar_sel') {
+    const categoriaId = interaction.values[0];
+    const categoria = await db.getCategoryById(categoriaId);
+    return interaction.showModal(buildCategoryModal('editar', categoria));
+  }
+
+  if (id === 'categoria_toggle_sel') {
+    await interaction.deferUpdate();
+    const categoriaId = interaction.values[0];
+    const categoria = await db.getCategoryById(categoriaId);
+    await db.toggleCategory(categoriaId, !categoria.active);
+    const status = !categoria.active ? 'ativada' : 'desativada';
+    return interaction.followUp({ content: `Categoria **${categoria.name}** foi ${status}!`, ephemeral: true });
+  }
 }
 
 async function handleModal(interaction) {
@@ -184,6 +223,10 @@ async function handleModal(interaction) {
   if (id === 'modal_cupom_novo' || id.startsWith('modal_cupom_editar_')) {
     return handleCouponModal(interaction);
   }
+
+  if (id === 'modal_categoria_nova' || id.startsWith('modal_categoria_editar_')) {
+    return handleCategoryModal(interaction);
+  }
 }
 
 async function handleProductModal(interaction) {
@@ -192,6 +235,7 @@ async function handleProductModal(interaction) {
   const descricao = interaction.fields.getTextInputValue('descricao').trim();
   const precoStr = interaction.fields.getTextInputValue('preco').replace(',', '.').trim();
   const imagem = interaction.fields.getTextInputValue('imagem').trim() || null;
+  const categoria = interaction.fields.getTextInputValue('categoria').trim() || null;
   const preco = parseFloat(precoStr);
 
   if (isNaN(preco) || preco <= 0) {
@@ -202,19 +246,55 @@ async function handleProductModal(interaction) {
 
   try {
     if (id === 'modal_produto_novo') {
-      await db.createProduct({ nome, descricao, preco, imagem });
+      await db.createProduct({ nome, descricao, preco, imagem, categoria });
       await enviarLog(interaction.client, msgProdutoCriado({ name: nome, description: descricao, price: preco }, interaction.user.tag));
       return interaction.editReply({ content: `Produto **${nome}** criado por ${formatarValor(preco)}!` });
     }
 
     if (id.startsWith('modal_produto_editar_')) {
       const produtoId = id.replace('modal_produto_editar_', '');
-      await db.updateProduct(produtoId, { nome, descricao, preco, imagem });
+      await db.updateProduct(produtoId, { nome, descricao, preco, imagem, categoria });
       await enviarLog(interaction.client, msgProdutoEditado({ name: nome, price: preco }, interaction.user.tag));
       return interaction.editReply({ content: `Produto **${nome}** atualizado!` });
     }
   } catch (err) {
     console.error('[modal_produto]', err);
+    return interaction.editReply({ content: `Erro: ${err.message}` });
+  }
+}
+
+async function handleCategoryModal(interaction) {
+  const id = interaction.customId;
+  const nome = interaction.fields.getTextInputValue('nome').trim();
+  const descricao = interaction.fields.getTextInputValue('descricao').trim() || null;
+  const ordemStr = interaction.fields.getTextInputValue('ordem').trim() || '0';
+  const ativoStr = interaction.fields.getTextInputValue('ativo').trim().toLowerCase() || 'sim';
+  const sortOrder = parseInt(ordemStr, 10);
+  const active = !['nao', 'n', 'false', '0', 'inativa', 'inativo'].includes(ativoStr);
+
+  if (!nome || nome.length > 80) {
+    return interaction.reply({ content: 'Nome de categoria invalido. Use ate 80 caracteres.', ephemeral: true });
+  }
+
+  if (Number.isNaN(sortOrder)) {
+    return interaction.reply({ content: 'Ordem invalida. Use um numero inteiro.', ephemeral: true });
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    if (id === 'modal_categoria_nova') {
+      await db.createCategory({ nome, descricao, active, sortOrder });
+      return interaction.editReply({ content: `Categoria **${nome}** criada!` });
+    }
+
+    if (id.startsWith('modal_categoria_editar_')) {
+      const categoriaId = id.replace('modal_categoria_editar_', '');
+      await db.updateCategory(categoriaId, { nome, descricao, active, sortOrder });
+      return interaction.editReply({ content: `Categoria **${nome}** atualizada!` });
+    }
+  } catch (err) {
+    console.error('[modal_categoria]', err);
     return interaction.editReply({ content: `Erro: ${err.message}` });
   }
 }
@@ -298,6 +378,62 @@ function buildProductModal(tipo, produto = null) {
         .setLabel('URL da imagem (opcional)')
         .setStyle(TextInputStyle.Short)
         .setValue(produto?.image_url || '')
+        .setRequired(false)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('categoria')
+        .setLabel('Categoria (opcional)')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(80)
+        .setValue(produto?.category_name || '')
+        .setRequired(false)
+    ),
+  );
+
+  return modal;
+}
+
+function buildCategoryModal(tipo, categoria = null) {
+  const modal = new ModalBuilder()
+    .setCustomId(tipo === 'novo' ? 'modal_categoria_nova' : `modal_categoria_editar_${categoria.id}`)
+    .setTitle(tipo === 'novo' ? 'Nova Categoria' : 'Editar Categoria');
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('nome')
+        .setLabel('Nome da categoria')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(80)
+        .setValue(categoria?.name || '')
+        .setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('descricao')
+        .setLabel('Descricao (opcional)')
+        .setStyle(TextInputStyle.Paragraph)
+        .setMaxLength(300)
+        .setValue(categoria?.description || '')
+        .setRequired(false)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('ordem')
+        .setLabel('Ordem no catalogo')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(6)
+        .setValue(String(categoria?.sort_order ?? 0))
+        .setRequired(false)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('ativo')
+        .setLabel('Ativa? sim ou nao')
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(5)
+        .setValue(categoria?.active === false ? 'nao' : 'sim')
         .setRequired(false)
     ),
   );

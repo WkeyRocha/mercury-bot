@@ -14,6 +14,18 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Tabela de categorias
+CREATE TABLE IF NOT EXISTS categories (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name VARCHAR(80) NOT NULL UNIQUE,
+  description TEXT,
+  active BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id);
+
 -- Tabela de cupons
 CREATE TABLE IF NOT EXISTS coupons (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -55,6 +67,9 @@ CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
+CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(active);
+CREATE INDEX IF NOT EXISTS idx_categories_sort_order ON categories(sort_order);
+CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
 CREATE INDEX IF NOT EXISTS idx_coupons_active ON coupons(active);
 CREATE INDEX IF NOT EXISTS idx_orders_expires_at ON orders(expires_at);

@@ -3,6 +3,7 @@ const setup = require('../commands/setup');
 const comprar = require('../commands/comprar');
 const produtos = require('../commands/produtos');
 const pedidos = require('../commands/pedidos');
+const relatorio = require('../commands/relatorio');
 
 const {
   EmbedBuilder,
@@ -33,6 +34,7 @@ module.exports = {
         setup: setup.execute,
         comprar: comprar.execute,
         produtos: produtos.execute,
+        relatorio: relatorio.execute,
       };
 
       const handler = handlers[interaction.commandName];
@@ -52,7 +54,8 @@ module.exports = {
     if (interaction.isModalSubmit()) {
       const id = interaction.customId;
       if (id === 'modal_produto_novo' || id.startsWith('modal_produto_editar_') ||
-          id === 'modal_cupom_novo' || id.startsWith('modal_cupom_editar_')) {
+          id === 'modal_cupom_novo' || id.startsWith('modal_cupom_editar_') ||
+          id === 'modal_categoria_nova' || id.startsWith('modal_categoria_editar_')) {
         return produtos.handleModal(interaction);
       }
       if (id.startsWith('modal_compra_cupom:')) {
@@ -75,7 +78,7 @@ module.exports = {
           return pedidos.handleButton(interaction);
         }
         if (id === 'dashboard_atualizar') return dashboard.handleButton(interaction);
-        if (id === 'produto_novo' || id === 'cupom_novo' || id.startsWith('produto_editar_')) {
+        if (id === 'produto_novo' || id === 'cupom_novo' || id === 'categoria_nova' || id.startsWith('produto_editar_')) {
           return produtos.handleButton(interaction);
         }
         if (id === 'abrir_catalogo' || id.startsWith('cat_anterior_') || id.startsWith('cat_proximo_') || id.startsWith('comprar_')) {
@@ -114,7 +117,8 @@ module.exports = {
     if (interaction.isStringSelectMenu()) {
       const id = interaction.customId;
       if (id === 'produto_editar_sel' || id === 'produto_toggle_sel' ||
-          id === 'cupom_editar_sel' || id === 'cupom_toggle_sel') {
+          id === 'cupom_editar_sel' || id === 'cupom_toggle_sel' ||
+          id === 'categoria_editar_sel' || id === 'categoria_toggle_sel') {
         return produtos.handleSelectMenu(interaction);
       }
       if (id.startsWith('selecionar_produto_')) return handleSelecionarProduto(interaction);
@@ -280,6 +284,7 @@ function buildResumoCompra(produto, cupom = null) {
     .addFields(
       { name: 'Preco', value: `**${formatarValor(produto.price)}**`, inline: true },
       { name: 'Total', value: `**${formatarValor(amount)}**`, inline: true },
+      { name: 'Categoria', value: produto.category_name || 'Sem categoria', inline: true },
     )
     .setFooter({ text: 'Confirme para prosseguir com o pagamento via PIX' })
     .setTimestamp();
