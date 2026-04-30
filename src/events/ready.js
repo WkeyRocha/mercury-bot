@@ -4,7 +4,7 @@ module.exports = {
   execute(client) {
     console.log(`✅ Bot online como ${client.user.tag}`);
     client.user.setPresence({
-      activities: [{ name: '🛒 /comprar • /pedidos • /dashboard', type: 3 }],
+      activities: [{ name: 'Maked by rocha', type: 3 }],
       status: 'online',
     });
   },
