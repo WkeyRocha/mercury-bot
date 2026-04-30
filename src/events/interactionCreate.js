@@ -22,6 +22,7 @@ const db = require('../database/supabase');
 const { gerarPayloadPix, gerarTxid, formatarValor } = require('../utils/pix');
 const { embedPix, embedErro, embedSucesso } = require('../utils/embeds');
 const { enviarLog, msgCarrinhoCriado } = require('../utils/logs');
+const { scheduleOrderExpiration } = require('../utils/orderExpiry');
 
 module.exports = {
   name: 'interactionCreate',
@@ -57,6 +58,9 @@ module.exports = {
       if (id.startsWith('modal_compra_cupom:')) {
         return handleCupomCompra(interaction, id.split(':')[1]);
       }
+      if (id.startsWith('modal_avaliacao:')) {
+        return pedidos.handleModal(interaction);
+      }
       return;
     }
 
@@ -65,6 +69,9 @@ module.exports = {
       try {
         if (id.startsWith('pedido_confirmar_') || id.startsWith('pedido_negar_') ||
             id.startsWith('entrega_confirmar_') || id.startsWith('entrega_excluir_')) {
+          return pedidos.handleButton(interaction);
+        }
+        if (id.startsWith('avaliar_pedido:')) {
           return pedidos.handleButton(interaction);
         }
         if (id === 'dashboard_atualizar') return dashboard.handleButton(interaction);
@@ -154,6 +161,14 @@ async function handleConfirmarCompra(interaction, produtoId, cupomCode = '') {
 
   try {
     const produto = await db.getProductById(produtoId);
+    const pedidoAberto = await db.getOpenOrderByUser(user.id);
+    if (pedidoAberto) {
+      const canalAberto = pedidoAberto.channel_id ? `<#${pedidoAberto.channel_id}>` : 'seu canal de compra aberto';
+      return interaction.editReply({
+        embeds: [embedErro(`Voce ja tem um pedido pendente em ${canalAberto}. Finalize, cancele ou aguarde expirar antes de abrir outro carrinho.`)],
+      });
+    }
+
     const cupom = cupomCode ? await db.getActiveCouponByCode(cupomCode) : null;
     if (cupomCode && !cupom) {
       return interaction.editReply({ embeds: [embedErro('Cupom invalido ou inativo. Gere a compra novamente sem cupom ou aplique outro cupom.')] });
@@ -217,6 +232,7 @@ async function handleConfirmarCompra(interaction, produtoId, cupomCode = '') {
       channelId: canal.id,
       pixTxid: txid,
     });
+    scheduleOrderExpiration(interaction.client, pedido);
 
     await enviarLog(interaction.client, msgCarrinhoCriado(user, produto, txid, pedido.id, pedido));
 

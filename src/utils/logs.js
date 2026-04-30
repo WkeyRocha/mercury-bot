@@ -7,13 +7,13 @@ const {
 const { formatarValor } = require('./pix');
 const { CORES } = require('./embeds');
 
-async function enviarLog(client, { embeds, components } = {}) {
+async function enviarLog(client, { content, embeds, components } = {}) {
   const channelId = process.env.LOGS_CHANNEL_ID;
   if (!channelId) return null;
   try {
     const canal = await client.channels.fetch(channelId).catch(() => null);
     if (!canal) return null;
-    return await canal.send({ embeds, components: components || [] });
+    return await canal.send({ content, embeds, components: components || [] });
   } catch (err) {
     console.error('[LOG]', err);
     return null;
@@ -54,7 +54,41 @@ function msgCarrinhoCriado(user, produto, txid, pedidoId, pedido = null) {
       .setStyle(ButtonStyle.Danger),
   );
 
-  return { embeds: [embed], components: [row] };
+  const content = process.env.ADMIN_NOTIFY_ON_CART === 'false' || !process.env.ADMIN_ROLE_ID
+    ? undefined
+    : `<@&${process.env.ADMIN_ROLE_ID}> novo carrinho aguardando pagamento.`;
+
+  return { content, embeds: [embed], components: [row] };
+}
+
+function msgPedidoExpirado(pedido) {
+  const embed = new EmbedBuilder()
+    .setColor(CORES.erro)
+    .setTitle('Pedido Expirado')
+    .addFields(
+      { name: 'Comprador', value: `<@${pedido.user_id}> (${pedido.username})`, inline: true },
+      { name: 'Produto', value: pedido.product_name, inline: true },
+      { name: 'Valor', value: formatarValor(pedido.amount), inline: true },
+      { name: 'TXID', value: `\`${pedido.pix_txid || 'N/A'}\``, inline: false },
+    )
+    .setTimestamp()
+    .setFooter({ text: 'Cancelado automaticamente por falta de pagamento' });
+
+  return { embeds: [embed], components: [] };
+}
+
+function msgAvaliacaoRecebida(pedido) {
+  const embed = new EmbedBuilder()
+    .setColor(CORES.info)
+    .setTitle('Avaliacao Recebida')
+    .addFields(
+      { name: 'Comprador', value: `<@${pedido.user_id}> (${pedido.username})`, inline: true },
+      { name: 'Produto', value: pedido.product_name, inline: true },
+      { name: 'Nota', value: `${pedido.rating}/5`, inline: true },
+    )
+    .setTimestamp();
+
+  return { embeds: [embed], components: [] };
 }
 
 function msgVendaConfirmada(pedido, adminTag, deliveryNumber) {
@@ -143,4 +177,6 @@ module.exports = {
   msgVendaNegada,
   msgProdutoCriado,
   msgProdutoEditado,
+  msgPedidoExpirado,
+  msgAvaliacaoRecebida,
 };

@@ -35,11 +35,18 @@ CREATE TABLE IF NOT EXISTS orders (
   original_amount NUMERIC(10, 2),
   discount_amount NUMERIC(10, 2) DEFAULT 0,
   coupon_code VARCHAR(32),
-  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'denied')),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'denied', 'expired')),
   channel_id VARCHAR(50),
   pix_txid VARCHAR(50),
   confirmed_by VARCHAR(100),
   confirmed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  expired_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  delivered_by VARCHAR(100),
+  rating INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+  rating_comment TEXT,
+  rated_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -50,11 +57,22 @@ CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(active);
 CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
 CREATE INDEX IF NOT EXISTS idx_coupons_active ON coupons(active);
+CREATE INDEX IF NOT EXISTS idx_orders_expires_at ON orders(expires_at);
+CREATE INDEX IF NOT EXISTS idx_orders_rating ON orders(rating);
 
 -- Migração para bancos ja existentes
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS original_amount NUMERIC(10, 2);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10, 2) DEFAULT 0;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(32);
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('pending', 'confirmed', 'denied', 'expired'));
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS expired_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_by VARCHAR(100);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS rating INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5));
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS rating_comment TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS rated_at TIMESTAMPTZ;
 
 -- Dados de exemplo para produtos (opcional — remova se quiser adicionar os seus)
 INSERT INTO products (name, description, price, image_url) VALUES
