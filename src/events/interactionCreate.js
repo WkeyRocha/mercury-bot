@@ -5,6 +5,9 @@ const produtos = require('../commands/produtos');
 const pedidos = require('../commands/pedidos');
 const relatorio = require('../commands/relatorio');
 
+const fs = require('fs');
+const path = require('path');
+
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -18,12 +21,15 @@ const {
   TextInputStyle,
 } = require('discord.js');
 
-const QRCode = require('qrcode');
 const db = require('../database/supabase');
 const { gerarPayloadPix, gerarTxid, formatarValor } = require('../utils/pix');
 const { embedPix, embedErro, embedSucesso } = require('../utils/embeds');
 const { enviarLog, msgCarrinhoCriado } = require('../utils/logs');
 const { scheduleOrderExpiration } = require('../utils/orderExpiry');
+
+// ── QR Code estático ──────────────────────────────────────
+// Coloque o arquivo qrcode-pix.png dentro de src/assets/
+const QR_PATH = path.join(__dirname, '..', 'assets', 'qrcode-pix.png');
 
 module.exports = {
   name: 'interactionCreate',
@@ -191,12 +197,8 @@ async function handleConfirmarCompra(interaction, produtoId, cupomCode = '') {
       descricao: `${produto.name} - ${user.username}`,
     });
 
-    const qrBuffer = await QRCode.toBuffer(payloadPix, {
-      type: 'png',
-      width: 400,
-      margin: 2,
-      color: { dark: '#000000', light: '#FFFFFF' },
-    });
+    // ── QR Code estático ──────────────────────────────────
+    const qrBuffer = fs.readFileSync(QR_PATH);
     const qrAttachment = new AttachmentBuilder(qrBuffer, { name: 'qrcode-pix.png' });
 
     const perms = [
